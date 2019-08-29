@@ -5,8 +5,11 @@ package main
 import (
 	"log"
 	"strings"
-
+	"fmt"
+        "strconv"
 	"github.com/NVIDIA/gpu-monitoring-tools/bindings/go/nvml"
+
+	//"k8s-device-plugin/gpu-monitoring-tools/bindings/go/nvml"
 
 	"golang.org/x/net/context"
 	pluginapi "k8s.io/kubernetes/pkg/kubelet/apis/deviceplugin/v1beta1"
@@ -18,18 +21,83 @@ func check(err error) {
 	}
 }
 
+func combineIDcount(realID string, mCounter uint) string {
+	return fmt.Sprintf("%s-_-%d", realID, mCounter)
+}
+
+func getDevicesMemory() map[string]uint {
+	n, err := nvml.GetDeviceCount()
+        check(err)
+
+	m :=make(map[string]uint)
+
+        for i := uint(0); i < n; i++ {
+                d, err := nvml.NewDevice(i)
+                check(err)
+
+                log.Println("Start-GPUID:",d.UUID,"Memory:",uint(*d.Memory))
+		m[d.UUID] = uint(*d.Memory)
+                //log.Println("GPUid:%s Memory:%d",d.UUID,uint(d.Memory))
+        }
+
+        return m
+
+}
+
+func getfakegpuid() string{
+
+	f := getDevicesMemory()
+	var fakeid string
+
+	for i,j := range(f){
+		//r := fmt.Sprintf("%s-%s",i,strconv.Itoa(int(j)))
+		//g := strings.Join([]string{i,strconv.Itoa(int(j))},"-")
+		if len(fakeid)==0{
+			fakeid = i + ":" + strconv.Itoa(int(j))
+
+		}else{
+			fakeid = fakeid + "," + i + ":" + strconv.Itoa(int(j))
+			//fakeid = strings.Join([]string{fakeid,g},",")
+		}
+
+	}
+	return fakeid
+
+}
+
+
+
 func getDevices() []*pluginapi.Device {
 	n, err := nvml.GetDeviceCount()
 	check(err)
 
+
+
 	var devs []*pluginapi.Device
 	for i := uint(0); i < n; i++ {
-		d, err := nvml.NewDeviceLite(i)
+		d, err := nvml.NewDevice(i)
 		check(err)
+
+		log.Println("GPUID:",d.UUID,"Power:",uint(*d.Power),"Memory:",uint(*d.Memory))
+
+		/*
 		devs = append(devs, &pluginapi.Device{
 			ID:     d.UUID,
 			Health: pluginapi.Healthy,
 		})
+		//log.Printf("%+v\n",d)
+		*/
+		
+		for j := uint(0); j < uint(*d.Memory); j++{
+
+
+			newID := combineIDcount(d.UUID,j)
+			devs = append(devs, &pluginapi.Device{
+				ID:     newID,
+				Health: pluginapi.Healthy,
+			})
+
+		}
 	}
 
 	return devs
@@ -37,6 +105,7 @@ func getDevices() []*pluginapi.Device {
 
 func deviceExists(devs []*pluginapi.Device, id string) bool {
 	for _, d := range devs {
+		//log.Printf("ID:%d - id:%d",d.ID,id)
 		if d.ID == id {
 			return true
 		}
@@ -44,12 +113,18 @@ func deviceExists(devs []*pluginapi.Device, id string) bool {
 	return false
 }
 
+func splitDeviceID(rawID string) string {
+	return strings.Split(rawID, "-_-")[0]
+}
+
 func watchXIDs(ctx context.Context, devs []*pluginapi.Device, xids chan<- *pluginapi.Device) {
 	eventSet := nvml.NewEventSet()
 	defer nvml.DeleteEventSet(eventSet)
 
+ 
 	for _, d := range devs {
-		err := nvml.RegisterEventForDevice(eventSet, nvml.XidCriticalError, d.ID)
+		realID := splitDeviceID(d.ID)
+		err := nvml.RegisterEventForDevice(eventSet, nvml.XidCriticalError, realID)
 		if err != nil && strings.HasSuffix(err.Error(), "Not Supported") {
 			log.Printf("Warning: %s is too old to support healthchecking: %s. Marking it unhealthy.", d.ID, err)
 
@@ -58,7 +133,7 @@ func watchXIDs(ctx context.Context, devs []*pluginapi.Device, xids chan<- *plugi
 		}
 
 		if err != nil {
-			log.Panicln("Fatal:", err)
+			log.Panicln("Fatalaaaa:", err)
 		}
 	}
 

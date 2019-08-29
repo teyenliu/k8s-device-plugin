@@ -1,5 +1,6 @@
 // Copyright (c) 2017, NVIDIA CORPORATION. All rights reserved.
 
+
 package main
 
 import (
@@ -8,11 +9,24 @@ import (
 	"syscall"
 
 	"github.com/NVIDIA/gpu-monitoring-tools/bindings/go/nvml"
+
+	//"k8s-device-plugin/gpu-monitoring-tools/bindings/go/nvml"
 	"github.com/fsnotify/fsnotify"
 	pluginapi "k8s.io/kubernetes/pkg/kubelet/apis/deviceplugin/v1beta1"
 )
 
 func main() {
+
+	/*
+	podaa :=  Podinfo()
+
+        for i,j := range(podaa){
+                log.Printf("Name:%s State:%s Annotation:%s Memory:%d\n",i,j.state,j.annotation,j.mem)
+
+        }*/
+
+
+
 	log.Println("Loading NVML")
 	if err := nvml.Init(); err != nil {
 		log.Printf("Failed to initialize NVML: %s.", err)
@@ -43,6 +57,7 @@ func main() {
 
 	restart := true
 	var devicePlugin *NvidiaDevicePlugin
+	//Test()
 
 L:
 	for {

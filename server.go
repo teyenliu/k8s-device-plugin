@@ -14,10 +14,34 @@ import (
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	pluginapi "k8s.io/kubernetes/pkg/kubelet/apis/deviceplugin/v1beta1"
+
+
+	//"flag"
+	//"k8s.io/client-go/tools/clientcmd"
+	//"k8s.io/client-go/kubernetes"
+        //metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+        //"sort"
+
+        //log "github.com/golang/glog"
+        //"k8s.io/apimachinery/pkg/labels"
+
+        //"k8s.io/api/core/v1"
+        //"k8s.io/apimachinery/pkg/api/resource"
+
+        //"k8s.io/apimachinery/pkg/fields"
+
+        //"k8s.io/apimachinery/pkg/types"
+
+        //"k8s.io/client-go/rest"
+
+        //nodeutil "k8s.io/kubernetes/pkg/util/node"
+
+
 )
 
 const (
-	resourceName           = "nvidia.com/gpu"
+	resourceName           = "test/gpu"
+	//"test/gpu"
 	serverSock             = pluginapi.DevicePluginPath + "nvidia.sock"
 	envDisableHealthChecks = "DP_DISABLE_HEALTHCHECKS"
 	allHealthChecks        = "xids"
@@ -32,7 +56,9 @@ type NvidiaDevicePlugin struct {
 	health chan *pluginapi.Device
 
 	server *grpc.Server
+
 }
+
 
 // NewNvidiaDevicePlugin returns an initialized NvidiaDevicePlugin
 func NewNvidiaDevicePlugin() *NvidiaDevicePlugin {
@@ -121,8 +147,8 @@ func (m *NvidiaDevicePlugin) Register(kubeletEndpoint, resourceName string) erro
 		Endpoint:     path.Base(m.socket),
 		ResourceName: resourceName,
 	}
-
 	_, err = client.Register(context.Background(), reqt)
+
 	if err != nil {
 		return err
 	}
@@ -133,6 +159,8 @@ func (m *NvidiaDevicePlugin) Register(kubeletEndpoint, resourceName string) erro
 func (m *NvidiaDevicePlugin) ListAndWatch(e *pluginapi.Empty, s pluginapi.DevicePlugin_ListAndWatchServer) error {
 	s.Send(&pluginapi.ListAndWatchResponse{Devices: m.devs})
 
+	upcheck2 := updatenode()
+        fmt.Printf("Node Update:%s\n",upcheck2)
 	for {
 		select {
 		case <-m.stop:
@@ -153,12 +181,27 @@ func (m *NvidiaDevicePlugin) unhealthy(dev *pluginapi.Device) {
 func (m *NvidiaDevicePlugin) Allocate(ctx context.Context, reqs *pluginapi.AllocateRequest) (*pluginapi.AllocateResponse, error) {
 	devs := m.devs
 	responses := pluginapi.AllocateResponse{}
+	log.Printf("Allocate start\n")
+
+        podaa :=  Podinfo()
+        for i,j := range(podaa){
+		log.Printf("Name:%s State:%s gputype:%s  GPUID:%s Memory:%d\n",i,j.state,j.gputype,j.gpuid,j.mem)
+
+        }
+
+	bestuuid := gpuassign()
 	for _, req := range reqs.ContainerRequests {
+		//bestuuid := gpuassign()
+		//deviceinfo := gpuassign()
 		response := pluginapi.ContainerAllocateResponse{
 			Envs: map[string]string{
-				"NVIDIA_VISIBLE_DEVICES": strings.Join(req.DevicesIDs, ","),
+				"NVIDIA_VISIBLE_DEVICES": bestuuid,
+				//"NVIDIA_VISIBLE_DEVICES":"GPU-f1c3fe7f-654f-111a-acb9-c69391ed8541",
+				//strings.Join(req.DevicesIDs, ","),
 			},
+
 		}
+		//log.Println("USE_Device:",strings.Join(req.DevicesIDs, ","))
 
 		for _, id := range req.DevicesIDs {
 			if !deviceExists(devs, id) {
@@ -168,7 +211,16 @@ func (m *NvidiaDevicePlugin) Allocate(ctx context.Context, reqs *pluginapi.Alloc
 
 		responses.ContainerResponses = append(responses.ContainerResponses, &response)
 	}
+	upcheck := updatepod(bestuuid)
+	fmt.Printf("Pod Update:%s\n",upcheck)
 
+	/*
+	upcheck2 := updatenode()
+        fmt.Printf("Node Update:%s\n",upcheck2)
+	*/
+
+	//te := gpuassign()
+	//log.Printf("test:%s\n",te)
 	return &responses, nil
 }
 
